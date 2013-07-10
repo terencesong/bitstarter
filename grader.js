@@ -24,9 +24,12 @@ References:
 
 
 var fs = require('fs');
+var util = require('util');
 var program = require('commander');
 var cheerio = require('cheerio');
+var rest = require('restler');
 var HTMLFILE_DEFAULT = "index.html";
+var HTMLURL_DEFAULT = "http://www.google.com";
 var CHECKSFILE_DEFAULT = "checks.json";
 
 var assertFileExists = function(infile) {
@@ -36,6 +39,24 @@ var assertFileExists = function(infile) {
 	process.exit(1); // http://nodejs.org/api/process.html#process_process_exit_code
     }
     return instr;
+};
+
+var buildfn = function(inurl) {
+    var response2console = function(result, response) {
+	if (result instanceof Error) {
+	    console.error('Error: ' + util.format(response.message));
+	} else {
+	    console.error("Read %s", inurl);
+	    fs.writeFileSync("temp.html", result);
+	}
+    };
+    return response2console;
+};
+
+var assertUrlExists = function(inurl) {
+    var response2console = buildfn(inurl);
+    rest.get(inurl).on('complete', response2console);
+    return inurl;
 };
 
 var cheerioHtmlFile = function(htmlfile) {
@@ -66,11 +87,23 @@ var clone = function(fn) {
 if (require.main == module) {
     program
 	.option('-c, --checks <check_file>', 'Path to checks.json', clone(assertFileExists), CHECKSFILE_DEFAULT)
-	.option('-f, --file <html_file>', 'Path to index.html', clone(assertFileExists), HTMLFILE_DEFAULT)
+	.option('-f, --file <html_file>', 'Path to the HTML file', clone(assertFileExists))
+	.option('-u, --url <url>', 'URL to the HTML file', clone(assertUrlExists))
 	.parse(process.argv);
-    var checkJson = checkHtmlFile(program.file, program.checks);
+    var checkJson = undefined;
+    if (program.file != undefined) {
+	//console.log("Checking file: %s", program.file);
+	checkJson = checkHtmlFile(program.file, program.checks);
+    } else if (program.url != undefined) {
+	//console.log("Checking URL: %s", program.url);
+	checkJson = checkHtmlFile("temp.html", program.checks);
+    } else {
+	console.log("No HTML file or URL specified. Exiting.");
+	process.exit(1);
+    }
     var outJson = JSON.stringify(checkJson, null, 4);
     console.log(outJson);
 } else {
+    // Export checkHtmlFile so it can be called as a module.
     exports.checkHtmlFile = checkHtmlFile;
 }
